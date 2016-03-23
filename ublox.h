@@ -41,6 +41,21 @@ typedef struct __attribute__((packed,aligned(1))) NavigationPositionVelocityTime
 	uint32_t	reserved3;	// Reserved
 } NavigationPositionVelocityTimeSolution;
 
+typedef struct __attribute__((packed,aligned(1))) TimePulseParameters {
+	uint8_t		tpIdx;
+	uint8_t		reserved0;
+	uint16_t	reserved1;
+	int16_t		antCableDelay;
+	int16_t		rfGroupDelay;
+	uint32_t	freqPeriod;
+	uint32_t	freqPeriodLock;
+	uint32_t	pulseLenRatio;
+	uint32_t	pulseLenRatioLock;
+	int32_t		userConfigDelay;
+	uint32_t	flags;
+
+} TimePulseParameters;
+
 enum NMEA {
 	NMEA_CGA = 0,
 	NMEA_GLL,
@@ -57,31 +72,46 @@ enum NMEA {
 	NMEA_GPQ = 0x40,
 	NMEA_TXT,
 	NMEA_GNQ,
-	NMEA_GLQ
+	NMEA_GLQ,
+	NMEA_STD = 0xf0,
+	NMEA_PBX
 };
 
 class uBlox {
 
 public:
 	NavigationPositionVelocityTimeSolution *NavPvt;
+	TimePulseParameters *CfgTp;
 	//
 	uBlox	(TwoWire& ,uint8_t);
 	void	CfgMsg(uint8_t,uint8_t, uint8_t);
+	int		CfgTp5 (uint8_t);
+	int		CfgTp5 (TimePulseParameters*);
+
+	uint8_t *getBuffer(uint16_t);
+	uint16_t getAckedId ();
 	int		available();
 	int		process(uint8_t);
 	void	enable ();
 	void	disable ();
 	void	flush();
+	void	reset();
 
 private:
 	int send(uint8_t *,int);
+	int wait();
 	//
-	TwoWire& _Wire;
-	uint8_t _address;
-	int	state = 0;
-	uint16_t plLength;
-	uint16_t Id;
-	uint8_t	*p,buffer[128];
+	TwoWire&	_Wire;
+	uint8_t		_address;
+	int			state = 0;
+	uint16_t	AckedId;
+	uint16_t	plLength;
+	uint16_t	Id;
+	uint8_t		*p;
+	struct {
+		uint16_t length;
+		uint8_t	buffer[256];
+	} payLoad;
 
 
 };

@@ -19,16 +19,19 @@ uBlox::uBlox (TwoWire& Wire,uint8_t address):
 }
 
 void uBlox::enable () {
+	this->reset();
 	digitalWrite(GPS_ENABLE, 1);
 	db_printf("uBlox enabled\n");
 }
 
 void uBlox::disable () {
+	this->reset();
 	digitalWrite(GPS_ENABLE, 0);
 	db_printf("uBlox disabled\n");
 }
 
 void uBlox::flush() {
+	this->reset();
 	uint16_t bytes = this->available();
 	if (bytes) {
 		Wire.requestFrom(_address, bytes);
@@ -36,6 +39,10 @@ void uBlox::flush() {
 			(void) Wire.read();
 		} while (--bytes);
 	}
+}
+
+void uBlox::reset() {
+	state = 0;
 }
 
 int uBlox::process(uint8_t c) {
@@ -68,15 +75,18 @@ int uBlox::process(uint8_t c) {
 		ck_a += c; ck_b += ck_a;
 		plLength |= (uint16_t) c << 8;
 		state = 6;
-		// db_printf("length=%4.4x\n",plLength);
-		p = buffer;
+		if (Id == 0x500 || Id == 0x501)	// ACK/NAK buffer
+			p = (uint8_t *) &AckedId;
+		else {
+			payLoad.length = plLength;
+			p = payLoad.buffer;
+		}
 	}
 	else if (state == 6) {
 		ck_a += c; ck_b += ck_a;
 		*p++ = c;
 		if (--plLength == 0) {
 			state = 7;
-			// db_printf("ck_a=0x%2.2x ck_b=0x%2.2x\n",ck_a,ck_b);
 		}
 	}
 	else if (state == 7) {
@@ -88,21 +98,33 @@ int uBlox::process(uint8_t c) {
 	else if (state == 8) {
 		state = 0;
 		if (ck_b == c) {
-			// db_printf("CHK_OK\n");
 			if (Id == 0x0107) {
-				NavPvt = (NavigationPositionVelocityTimeSolution* )buffer;
+				NavPvt = (NavigationPositionVelocityTimeSolution*) payLoad.buffer;
 				db_printf("%4.4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d.%d lat=%d lon=%d sats=%d\n",
 						  NavPvt->year,NavPvt->month,NavPvt->day,
 						  NavPvt->hour,NavPvt->minute,NavPvt->seconds,NavPvt->nano,
 						  NavPvt->lat,NavPvt->lon,NavPvt->numSV);
 			}
+			else if (Id == 0x0501 || Id == 0x500) {
+				AckedId = (AckedId >> 8) | (AckedId << 8);	// Change Endianess
+				db_printf("Id=%4.4x Ack=%4.4x\n",Id,AckedId);
+			}
+			else if (Id == 0x0631) {
+				CfgTp = (TimePulseParameters*) payLoad.buffer;
+				db_printf("freqPeriod=%d freqPeriodLock=%d pulseLenRatio=%d pulseLenRatioLock=%d flags=%4.4x\n",
+						  CfgTp->freqPeriod,
+						  CfgTp->freqPeriodLock,
+						  CfgTp->pulseLenRatio,
+						  CfgTp->pulseLenRatioLock,
+						  CfgTp->flags);
+			}
 			else
 				db_printf("Processed Id=0x%4.4x\n",Id);
-			return -1;
+			return Id;
 
 		}
 	}
-	return state;
+	return (0-state);
 }
 
 int uBlox::available() {
@@ -144,22 +166,59 @@ void uBlox::CfgMsg(uint8_t MsgClass, uint8_t MsgID,uint8_t rate) {
 	buffer[5] = MsgID;
 	buffer[6] = rate;
 	// Push message on Wire
-	int i = uBlox::send(buffer,7);
-	//
-	uint32_t s = millis(),elapsed;
-	uint16_t bytes;
-	// Wait for (N)ACK
-	while ((elapsed = millis()-s) < 10 && (bytes = this->available()) == 0 );
-	if (bytes) {
-		db_printf("Waited %d ms for %d bytes\n",elapsed,bytes);
-		if (Wire.requestFrom(_address, bytes)) {
-			do {
-				this->process(_Wire.read());
-			} while (--bytes);
-			// Ack or Nack ...
-		}
-	}
-
-
+	int i = this->send(buffer,7);
+	this->wait();
 }
 
+int uBlox::CfgTp5 (uint8_t tpIdx) {
+	uint8_t buffer[5];
+	//
+	buffer[0] = 0x06;
+	buffer[1] = 0x31;
+	buffer[2] = 1;
+	buffer[3] = 0;
+	buffer[4] = tpIdx;
+	// Push message on Wire
+	int i = this->send(buffer,5);
+	return this->wait();
+}
+
+int uBlox::CfgTp5 (TimePulseParameters *Tpp) {
+	// Warning this overwrites the receive buffer !!!
+	payLoad.buffer[0] = 0x06;
+	payLoad.buffer[1] = 0x31;
+	payLoad.buffer[2] = 32;
+	payLoad.buffer[3] = 0;
+	memcpy(&payLoad.buffer[4],(uint8_t*)Tpp,32);
+	// Push message on Wire
+	int i = this->send(payLoad.buffer,36);
+	return this->wait();
+}
+
+uint8_t *uBlox::getBuffer (uint16_t required) {
+	if (payLoad.length == required) // Should at least match
+		return payLoad.buffer;
+	else
+		return NULL;
+}
+
+uint16_t uBlox::getAckedId () {
+	return AckedId;
+}
+
+int uBlox::wait() {
+	uint32_t s = millis(),elapsed;
+	uint16_t bytes;
+	int16_t	id = 0;
+	// Wait for (N)ACK
+	while ((elapsed = millis()-s) < 50 && (bytes = this->available()) == 0 );
+	if (bytes) {
+		// db_printf("Waited %d ms for %d bytes\n",elapsed,bytes);
+		if (Wire.requestFrom(_address, bytes)) {
+			do {
+				id = this->process(_Wire.read());
+			} while (--bytes);
+		}
+	}
+	return id;
+}
