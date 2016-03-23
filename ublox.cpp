@@ -13,6 +13,29 @@ void db_printf(const char *message,...) {
 uBlox::uBlox (TwoWire& Wire,uint8_t address):
 	_Wire(Wire) {
 	_address = address;
+	//
+	pinMode(GPS_ENABLE, OUTPUT);
+	pinMode(GPS_TIMEPULSE, INPUT);
+}
+
+void uBlox::enable () {
+	digitalWrite(GPS_ENABLE, 1);
+	db_printf("uBlox enabled\n");
+}
+
+void uBlox::disable () {
+	digitalWrite(GPS_ENABLE, 0);
+	db_printf("uBlox disabled\n");
+}
+
+void uBlox::flush() {
+	uint16_t bytes = this->available();
+	if (bytes) {
+		Wire.requestFrom(_address, bytes);
+		do {
+			(void) Wire.read();
+		} while (--bytes);
+	}
 }
 
 int uBlox::process(uint8_t c) {
@@ -87,7 +110,7 @@ int uBlox::available() {
 	_Wire.write((uint8_t)0xfd);
 	_Wire.endTransmission(false);
 	_Wire.requestFrom(_address, 2);//
-	uint16_t bytes = _Wire.read() << 8;
+	uint16_t bytes = (uint16_t) _Wire.read() << 8;
 	bytes |= _Wire.read();
 	return bytes;
 }
@@ -122,5 +145,21 @@ void uBlox::CfgMsg(uint8_t MsgClass, uint8_t MsgID,uint8_t rate) {
 	buffer[6] = rate;
 	// Push message on Wire
 	int i = uBlox::send(buffer,7);
+	//
+	uint32_t s = millis(),elapsed;
+	uint16_t bytes;
+	// Wait for (N)ACK
+	while ((elapsed = millis()-s) < 10 && (bytes = this->available()) == 0 );
+	if (bytes) {
+		db_printf("Waited %d ms for %d bytes\n",elapsed,bytes);
+		if (Wire.requestFrom(_address, bytes)) {
+			do {
+				this->process(_Wire.read());
+			} while (--bytes);
+			// Ack or Nack ...
+		}
+	}
+
+
 }
 

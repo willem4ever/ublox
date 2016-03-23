@@ -41,6 +41,25 @@ typedef struct __attribute__((packed,aligned(1))) NavigationPositionVelocityTime
 	uint32_t	reserved3;	// Reserved
 } NavigationPositionVelocityTimeSolution;
 
+enum NMEA {
+	NMEA_CGA = 0,
+	NMEA_GLL,
+	NMEA_GSA,
+	NMEA_GSV,
+	NMEA_RMC,
+	NMEA_VTG,
+	NMEA_GRS,
+	NMEA_GST,
+	NMEA_ZDA,
+	NMEA_GBS,
+	NMEA_DTM,
+	NMEA_GNS = 0xd,
+	NMEA_GPQ = 0x40,
+	NMEA_TXT,
+	NMEA_GNQ,
+	NMEA_GLQ
+};
+
 class uBlox {
 
 public:
@@ -50,9 +69,13 @@ public:
 	void	CfgMsg(uint8_t,uint8_t, uint8_t);
 	int		available();
 	int		process(uint8_t);
+	void	enable ();
+	void	disable ();
+	void	flush();
 
 private:
 	int send(uint8_t *,int);
+	//
 	TwoWire& _Wire;
 	uint8_t _address;
 	int	state = 0;
