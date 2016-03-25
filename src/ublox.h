@@ -116,6 +116,7 @@ public:
     NavigationPositionVelocityTimeSolution *NavPvt;
     TimePulseParameters *CfgTp;
     //
+    uBlox   ();
     uBlox   (TwoWire& Wire,uint8_t address);
     void    CfgMsg(uint16_t Msg,uint8_t rate);
     int     CfgPrt ();
@@ -128,10 +129,17 @@ public:
     uint16_t getAckedId ();
     int     available();
     int     process(uint8_t);
+
+    void    GetPacket();
+    void    GetPacket(int bytes);
     void    enable ();
     void    disable ();
     void    flush();
     void    reset();
+
+    // function pointers
+    void    (*funcNavPvt) (NavigationPositionVelocityTimeSolution*) = NULL;
+
     // Debug helper
     void    db_printf(const char *message,...);
 

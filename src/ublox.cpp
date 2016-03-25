@@ -29,8 +29,16 @@ void uBlox::db_printf(const char *message,...) {
     va_end(args);
 }
 
-uBlox::uBlox (TwoWire& Wire,uint8_t address):
+uBlox::uBlox ():
     _Wire(Wire) {
+    _address = 0x42;
+    //
+    pinMode(GPS_ENABLE, OUTPUT);
+    pinMode(GPS_TIMEPULSE, INPUT);
+}
+
+uBlox::uBlox (TwoWire& aWire,uint8_t address):
+    _Wire(aWire) {
     _address = address;
     //
     pinMode(GPS_ENABLE, OUTPUT);
@@ -63,6 +71,23 @@ void uBlox::flush() {
 void uBlox::reset() {
     state = 0;
 }
+
+/*
+ UBX Packet Structure
+ A basic UBX Packet looks as follows:
+ • Every Message starts with 2 Bytes: 0xB5 0x62
+ • A 1 Byte Class Field follows. The Class defines the basic subset of the message
+ • A 1 Byte ID Field defines the message that is to follow
+ • A 2 Byte Length Field is following. Length is defined as being the length of the payload, only. 
+    It does not include Sync Chars, Length Field, Class, ID or CRC fields. 
+    The number format of the length field is an unsigned 16-Bit integer in Little Endian Format.
+ • The Payload is a variable length field.
+ • CK_A and CK_B is a 16 Bit checksum whose calculation is defined below.
+ 
+ • The checksum algorithm used is the 8-Bit Fletcher Algorithm, which is used in the TCP standard (RFC 1145). This algorithm works as follows:
+ • Buffer[N] contains the data over which the checksum is to be calculated.
+ • The two CK_ values are 8-Bit unsigned integers, only!
+ */
 
 int uBlox::process(uint8_t c) {
     static uint8_t ck_a,ck_b;
@@ -135,6 +160,44 @@ int uBlox::available() {
     uint16_t bytes = (uint16_t) _Wire.read() << 8;
     bytes |= _Wire.read();
     return bytes;
+}
+
+void uBlox::GetPacket() {
+    int bytes = this->available();
+    if (bytes)
+        return this->GetPacket(bytes);
+}
+
+void uBlox::GetPacket (int bytes) {
+    this->db_printf("%d bytes available\n",bytes);
+    if (bytes) {
+        do {
+            uint8_t read;       // Holds actual read
+            if (bytes >= 128)
+                read = _Wire.requestFrom(_address, 128);
+            else
+                read = _Wire.requestFrom(_address, bytes);
+            bytes -= read;
+            while (_Wire.available()) {
+                uint8_t c = Wire.read();
+                int id = this->process(c);  // id < 0 state of state machine, id > 0 valid UBX packet found, id == 0 no match for UBX
+                if (id > 0 && id != 0x0501 && id != 0x0500) { // Valid and not equal to ACK or NAK
+                    // Process UBX packet
+                    switch (id) {
+                        case 0x0107:
+                            if (funcNavPvt) {
+                                if (payLoad.length == sizeof(NavigationPositionVelocityTimeSolution))
+                                    this->funcNavPvt((NavigationPositionVelocityTimeSolution*)payLoad.buffer);
+                            }
+                            break;
+                        default:
+                            //
+                            break;
+                    }
+                }
+            }
+        } while (bytes);
+    }
 }
 
 int uBlox::send(uint8_t *buffer,int n) {
@@ -224,7 +287,7 @@ void *uBlox::getBuffer (uint16_t required) {
     if (payLoad.length == required) // Should at least match
         return payLoad.buffer;
     else {
-        this->db_printf("Required=%d, available=%d\n",required,payLoad.length);
+        this->db_printf("required=%d, available=%d\n",required,payLoad.length);
         return NULL;
     }
 }
