@@ -93,25 +93,30 @@ void setup() {
   //
   uBlox.flush();
   //
-  if (uBlox.CfgTp5((uint8_t)0) == 0x0501) {
-    TimePulseParameters xnew;
-    SerialUSB.println("Got Tpp");
-    if (uBlox.getTimePulseParameters(&xnew));
+
+  TimePulseParameters xnew;
+  if (uBlox.getTimePulseParameters(0, &xnew)) {
     xnew.freqPeriod    = 1000000;
     xnew.pulseLenRatio = 100000;
-    uBlox.CfgTp5(&xnew);
     uBlox.db_printf(">>freqPeriod=%d freqPeriodLock=%d pulseLenRatio=%d pulseLenRatioLock=%d flags=%4.4x\n", xnew.freqPeriod, xnew.freqPeriodLock, xnew.pulseLenRatio, xnew.pulseLenRatioLock, xnew.flags);
-    (void) uBlox.CfgTp5((uint8_t)0);
+    uBlox.setTimePulseParameters(&xnew);
+    //
     memset(&xnew, 0, sizeof(TimePulseParameters));      // Wipe structure
-    if (uBlox.getTimePulseParameters(&xnew))            // Reread TimePulseParameters
+    if (uBlox.getTimePulseParameters(0, &xnew))         // Reread TimePulseParameters
       uBlox.db_printf("<<freqPeriod=%d freqPeriodLock=%d pulseLenRatio=%d pulseLenRatioLock=%d flags=%4.4x\n", xnew.freqPeriod, xnew.freqPeriodLock, xnew.pulseLenRatio, xnew.pulseLenRatioLock, xnew.flags);
-
+  }
+  
+  PortConfigurationDDC pcd;
+  if (uBlox.getPortConfigurationDDC(&pcd)) {
+    uBlox.db_printf("portID=%x txReady=%x mode=%x inProtoMask=%4.4x outProtoMask=%4.4x flags=%4.4x reserved5=%x\n", pcd.portID, pcd.txReady, pcd.mode, pcd.inProtoMask, pcd.outProtoMask, pcd.flags, pcd.reserved5);
+    pcd.outProtoMask = 1;           // Disable NMEA
+    uBlox.setPortConfigurationDDC(&pcd);
   }
   else
-    uBlox.db_printf("TimePulseParameters failed\n");
+    uBlox.db_printf("uBlox.getPortConfigurationDDC(&pcd) == false\n");
 
   uBlox.CfgMsg(UBX_NAV_PVT, 1);      // Navigation Position Velocity TimeSolution
-  uBlox.funcNavPvt = &delegateNavPvt;
+  uBlox.funcNavPvt = delegateNavPvt;
   //
   SerialUSB.println("Hit any key to enter loop or wait 5000 ms");
   uint32_t s = millis();
@@ -121,14 +126,14 @@ void setup() {
 }
 
 void delegateNavPvt(NavigationPositionVelocityTimeSolution* NavPvt) {
-    
-    uBlox.db_printf("%4.4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d.%d valid=%2.2x lat=%d lon=%d sats=%d fixType=%2.2x\n",
+
+  uBlox.db_printf("%4.4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d.%d valid=%2.2x lat=%d lon=%d sats=%d fixType=%2.2x\n",
                   NavPvt->year, NavPvt->month, NavPvt->day,
-                  NavPvt->hour, NavPvt->minute, NavPvt->seconds, NavPvt->nano,NavPvt->valid,
+                  NavPvt->hour, NavPvt->minute, NavPvt->seconds, NavPvt->nano, NavPvt->valid,
                   NavPvt->lat, NavPvt->lon, NavPvt->numSV, NavPvt->fixType);
-    
-  if ((NavPvt->valid & 3) ==3 && epoch == uptime) {     // Valid date & time
-    struct tm tm; 
+
+  if ((NavPvt->valid & 3) == 3 && epoch == uptime) {     // Valid date & time
+    struct tm tm;
     // Calculate epoch from UTC time ...
     tm.tm_isdst = -1;
     tm.tm_year  = NavPvt->year - 1900;
@@ -152,19 +157,14 @@ void loop() {
       while (SerialUSB.read() == -1);
     }
     else if (c == 'u') {
-      int id;
-      if ((id=uBlox.CfgPrt()) == 0x0501) {
-        PortConfigurationDDC pcd;
-        if (uBlox.getPortConfigurationDDC(&pcd)) {
-          uBlox.db_printf("portID=%x txReady=%x mode=%x inProtoMask=%4.4x outProtoMask=%4.4x flags=%4.4x reserved5=%x\n", pcd.portID, pcd.txReady, pcd.mode, pcd.inProtoMask, pcd.outProtoMask, pcd.flags, pcd.reserved5);
-          pcd.outProtoMask ^= 2;   // NMEA toggle
-          uBlox.CfgPrt(&pcd);
-        }
-        else
-            uBlox.db_printf("uBlox.getPortConfigurationDDC(&pcd) == false\n");
+      PortConfigurationDDC pcd;
+      if (uBlox.getPortConfigurationDDC(&pcd)) {
+        uBlox.db_printf("portID=%x txReady=%x mode=%x inProtoMask=%4.4x outProtoMask=%4.4x flags=%4.4x reserved5=%x\n", pcd.portID, pcd.txReady, pcd.mode, pcd.inProtoMask, pcd.outProtoMask, pcd.flags, pcd.reserved5);
+        pcd.outProtoMask ^= 2;   // NMEA toggle
+        uBlox.setPortConfigurationDDC(&pcd);
       }
       else
-        uBlox.db_printf("(id=uBlox.CfgPrt()) == %4.4x\n",id);
+        uBlox.db_printf("uBlox.getPortConfigurationDDC(&pcd) == false\n");
     }
   }
   //

@@ -1,49 +1,25 @@
 Library to be used with SODAQ XXOne .... WORK in progress, your mileage may vary
-
-Wire.begin();
+Example available ...
 
 functions ....
 
-uBlox   (TwoWire& ,uint8_t);
-void    CfgMsg(uint8_t,uint8_t, uint8_t);
-int     CfgTp5 (uint8_t);
-int     CfgTp5 (TimePulseParameters*);
+UBlox uBlox;        // Initialize library
 
-uint8_t  *getBuffer(uint16_t);
-uint16_t getAckedId ();
-int     available();
-int     process(uint8_t);
-void    enable ();
-void    disable ();
-void    flush();
-void    reset();
+uBlox.enable();                     // Enable u-blox must be called
 
-uBlox uBlox(Wire, 0x42);        // Initialize library
+uBlox.CfgMsg(UBX_NAV_PVT, 1);       // Navigation Position Velocity TimeSolution
+uBlox.funcNavPvt = delegateNavPvt;  // Callback function - see example for details.
 
-uBlox.enable();                 // Enable Ublox
-uBlox.flush();                  // Flush input buffer
-
-Wire.requestFrom(0x42, 128);    // read bytes (respect max buffer size default 64 bytes) into Ringbuffer
-
-int bytes = uBlox.available();  // Get available bytes
-c = Wire.read();                // Read byte from buffer
-
-id=uBlox.process(c);            // Processes bytes
-
-==0 Invalid / Ignored byte probably NMEA
-> 0 contains the Id of the received UXB messages
-< 0 Going thru the state machine
-
-
-uBlox.CfgMsg(NMEA_STD, NMEA_CGA, 0);    // Set rate for Message 0 = disable
-uBlox.CfgMsg(0x01, 0x07, 1);            // Navigation Position Velocity TimeSolution - output per second
-
-uBlox.CfgTp5((uint8_t)0) == 0x0501      // Get Time pulse parameters
-TimePulseParameters *tpp = (TimePulseParameters *) uBlox.getBuffer(32);
-
-TimePulseParameters ttp1;               // TimePulseParameters structure
-uBlox.CfgTp5(&ttp1);                    // Set Time pulse parameters
+uBlox.GetPeriodic();                // Call periodic from loop() {} this will call delegateNavPvt
 
 
 
+PortConfigurationDDC pcd;
+uBlox.getPortConfigurationDDC(&pcd); // GET Port Configuration for DDC Port - see manual and structure
+uBlox.setPortConfigurationDDC(&pcd); // SET Port Configuration for DDC Port - see manual and structure
 
+TimePulseParameters tpp
+uBlox.getTimePulseParameters(0, &tpp);  // GET Poll Time Pulse Parameters - see manual and structure
+uBlox.setTimePulseParameters(&xtpp);    // SET Poll Time Pulse Parameters - see manual and structure
+
+Look at ublox.h for functions and structures used

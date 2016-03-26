@@ -119,18 +119,13 @@ public:
     UBlox   ();
     UBlox   (TwoWire& Wire,uint8_t address);
     void    CfgMsg(uint16_t Msg,uint8_t rate);
-    int     CfgPrt();
-    int     CfgPrt(PortConfigurationDDC *pcd);
-    int     CfgTp5(uint8_t tpIdx);
-    int     CfgTp5(TimePulseParameters *Tpp);
     int     available();
-    int     process(uint8_t);
-    int     getAckedId();
     //
-    bool    getTimePulseParameters(TimePulseParameters* tpp);
+    int     setPortConfigurationDDC(PortConfigurationDDC *pcd);
+    int     setTimePulseParameters(TimePulseParameters *Tpp);
+    //
+    bool    getTimePulseParameters(uint8_t tpIdx,TimePulseParameters* tpp);
     bool    getPortConfigurationDDC(PortConfigurationDDC* pcd);
-
-;
 
     void    GetPeriodic();
     void    GetPeriodic(int bytes);
@@ -146,8 +141,10 @@ public:
     void    db_printf(const char *message,...);
 
 private:
-    int         send(uint8_t *buffer,int n);
-    int         wait();
+    int     process(uint8_t);
+    int     send(uint8_t *buffer,int n);
+    int     wait();
+    bool    wait(uint16_t rid,int reqLength,void *d);
     //
     TwoWire&    _Wire;
     uint8_t     _address;
