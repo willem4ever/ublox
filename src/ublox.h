@@ -110,28 +110,30 @@ enum NMEA {
     NMEA_GLQ
 };
 
-class uBlox {
+class UBlox {
 
 public:
     NavigationPositionVelocityTimeSolution *NavPvt;
     TimePulseParameters *CfgTp;
     //
-    uBlox   ();
-    uBlox   (TwoWire& Wire,uint8_t address);
+    UBlox   ();
+    UBlox   (TwoWire& Wire,uint8_t address);
     void    CfgMsg(uint16_t Msg,uint8_t rate);
-    int     CfgPrt ();
-    int     CfgPrt (PortConfigurationDDC *pcd);
-    int     CfgTp5 (uint8_t tpIdx);
-    int     CfgTp5 (TimePulseParameters *Tpp);
-
-    void    *getBuffer (uint16_t required);
-    uint8_t GetResponse(void *d,uint16_t required);
-    uint16_t getAckedId ();
+    int     CfgPrt();
+    int     CfgPrt(PortConfigurationDDC *pcd);
+    int     CfgTp5(uint8_t tpIdx);
+    int     CfgTp5(TimePulseParameters *Tpp);
     int     available();
     int     process(uint8_t);
+    int     getAckedId();
+    //
+    bool    getTimePulseParameters(TimePulseParameters* tpp);
+    bool    getPortConfigurationDDC(PortConfigurationDDC* pcd);
 
-    void    GetPacket();
-    void    GetPacket(int bytes);
+;
+
+    void    GetPeriodic();
+    void    GetPeriodic(int bytes);
     void    enable ();
     void    disable ();
     void    flush();

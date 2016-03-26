@@ -20,7 +20,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-void uBlox::db_printf(const char *message,...) {
+void UBlox::db_printf(const char *message,...) {
     static char buffer[128];
     va_list args;
     va_start(args, message);
@@ -29,7 +29,7 @@ void uBlox::db_printf(const char *message,...) {
     va_end(args);
 }
 
-uBlox::uBlox ():
+UBlox::UBlox ():
     _Wire(Wire) {
     _address = 0x42;
     //
@@ -37,7 +37,7 @@ uBlox::uBlox ():
     pinMode(GPS_TIMEPULSE, INPUT);
 }
 
-uBlox::uBlox (TwoWire& aWire,uint8_t address):
+UBlox::UBlox (TwoWire& aWire,uint8_t address):
     _Wire(aWire) {
     _address = address;
     //
@@ -45,19 +45,19 @@ uBlox::uBlox (TwoWire& aWire,uint8_t address):
     pinMode(GPS_TIMEPULSE, INPUT);
 }
 
-void uBlox::enable () {
+void UBlox::enable () {
     this->reset();
     digitalWrite(GPS_ENABLE, 1);
     db_printf("uBlox enabled\n");
 }
 
-void uBlox::disable () {
+void UBlox::disable () {
     this->reset();
     digitalWrite(GPS_ENABLE, 0);
     db_printf("uBlox disabled\n");
 }
 
-void uBlox::flush() {
+void UBlox::flush() {
     this->reset();
     uint16_t bytes = this->available();
     if (bytes) {
@@ -68,7 +68,7 @@ void uBlox::flush() {
     }
 }
 
-void uBlox::reset() {
+void UBlox::reset() {
     state = 0;
 }
 
@@ -89,7 +89,7 @@ void uBlox::reset() {
  • The two CK_ values are 8-Bit unsigned integers, only!
  */
 
-int uBlox::process(uint8_t c) {
+int UBlox::process(uint8_t c) {
     static uint8_t ck_a,ck_b;
     if (state == 0 && c == 0xb5)
         state = 1;
@@ -152,7 +152,7 @@ int uBlox::process(uint8_t c) {
     return (0-state);
 }
 
-int uBlox::available() {
+int UBlox::available() {
     _Wire.beginTransmission(_address);
     _Wire.write((uint8_t)0xfd);
     _Wire.endTransmission(false);
@@ -162,13 +162,13 @@ int uBlox::available() {
     return bytes;
 }
 
-void uBlox::GetPacket() {
+void UBlox::GetPeriodic() {
     int bytes = this->available();
     if (bytes)
-        return this->GetPacket(bytes);
+        return this->GetPeriodic(bytes);
 }
 
-void uBlox::GetPacket (int bytes) {
+void UBlox::GetPeriodic (int bytes) {
     this->db_printf("%d bytes available\n",bytes);
     if (bytes) {
         do {
@@ -200,7 +200,7 @@ void uBlox::GetPacket (int bytes) {
     }
 }
 
-int uBlox::send(uint8_t *buffer,int n) {
+int UBlox::send(uint8_t *buffer,int n) {
     uint8_t ck_a,ck_b;
     ck_a = ck_b = 0;
     //
@@ -218,7 +218,7 @@ int uBlox::send(uint8_t *buffer,int n) {
     return _Wire.endTransmission();
 }
 
-void uBlox::CfgMsg(uint16_t Msg,uint8_t rate) {
+void UBlox::CfgMsg(uint16_t Msg,uint8_t rate) {
     uint8_t buffer[7];
     //
     buffer[0] = 0x06;
@@ -233,7 +233,7 @@ void uBlox::CfgMsg(uint16_t Msg,uint8_t rate) {
     this->wait();
 }
 
-int uBlox::CfgPrt () {
+int UBlox::CfgPrt () {
     uint8_t buffer[4];
     //
     buffer[0] = 0x06;
@@ -245,7 +245,7 @@ int uBlox::CfgPrt () {
     return this->wait();
 }
 
-int uBlox::CfgPrt (PortConfigurationDDC *pcd) {
+int UBlox::CfgPrt (PortConfigurationDDC *pcd) {
     // Warning this overwrites the receive buffer !!!
     payLoad.buffer[0] = 0x06;
     payLoad.buffer[1] = 0x00;
@@ -258,7 +258,7 @@ int uBlox::CfgPrt (PortConfigurationDDC *pcd) {
 }
 
 
-int uBlox::CfgTp5 (uint8_t tpIdx) {
+int UBlox::CfgTp5 (uint8_t tpIdx) {
     uint8_t buffer[5];
     //
     buffer[0] = 0x06;
@@ -271,7 +271,7 @@ int uBlox::CfgTp5 (uint8_t tpIdx) {
     return this->wait();
 }
 
-int uBlox::CfgTp5 (TimePulseParameters *Tpp) {
+int UBlox::CfgTp5 (TimePulseParameters *Tpp) {
     // Warning this overwrites the receive buffer !!!
     payLoad.buffer[0] = 0x06;
     payLoad.buffer[1] = 0x31;
@@ -283,28 +283,27 @@ int uBlox::CfgTp5 (TimePulseParameters *Tpp) {
     return this->wait();
 }
 
-void *uBlox::getBuffer (uint16_t required) {
-    if (payLoad.length == required) // Should at least match
-        return payLoad.buffer;
-    else {
-        this->db_printf("required=%d, available=%d\n",required,payLoad.length);
-        return NULL;
+bool UBlox::getTimePulseParameters(TimePulseParameters* tpp) {
+    if (payLoad.length == sizeof(TimePulseParameters)) {
+        memcpy(tpp,payLoad.buffer,sizeof(TimePulseParameters));
+        return true;
     }
+    return false;
 }
 
-uint8_t uBlox::GetResponse(void *d,uint16_t required) {
-    if (payLoad.length == required) {
-        memcpy(d,payLoad.buffer,required);
-        return required;
+bool UBlox::getPortConfigurationDDC(PortConfigurationDDC* pcd) {
+    if (payLoad.length == sizeof(PortConfigurationDDC)) {
+        memcpy(pcd,payLoad.buffer,sizeof(PortConfigurationDDC));
+        return true;
     }
-    return 0;
+    return false;
 }
 
-uint16_t uBlox::getAckedId () {
+int UBlox::getAckedId () {
     return AckedId;
 }
 
-int uBlox::wait() {
+int UBlox::wait() {
     uint32_t s = millis(),elapsed;
     uint16_t bytes;
     int16_t id = 0;
