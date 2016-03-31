@@ -30,16 +30,22 @@ void UBlox::db_printf(const char *message,...) {
 }
 
 UBlox::UBlox ():
-    _Wire(Wire) {
-    _address = 0x42;
+    Wire_(Wire) {
+    address_ = 0x42;
+    //
+    Id_ = AckedId_ = plLength_ = 0;
+     p_ = NULL;
     //
     pinMode(GPS_ENABLE, OUTPUT);
     pinMode(GPS_TIMEPULSE, INPUT);
 }
 
 UBlox::UBlox (TwoWire& aWire,uint8_t address):
-    _Wire(aWire) {
-    _address = address;
+    Wire_(aWire) {
+    address_ = address;
+    //
+    Id_ = AckedId_ = plLength_ = 0;
+    p_ = NULL;
     //
     pinMode(GPS_ENABLE, OUTPUT);
     pinMode(GPS_TIMEPULSE, INPUT);
@@ -61,7 +67,7 @@ void UBlox::flush() {
     this->reset();
     uint16_t bytes = this->available();
     if (bytes) {
-        Wire.requestFrom(_address, bytes);
+        Wire.requestFrom(address_, bytes);
         do {
             (void) Wire.read();
         } while (--bytes);
@@ -69,7 +75,7 @@ void UBlox::flush() {
 }
 
 void UBlox::reset() {
-    state = 0;
+    state_ = 0;
 }
 
 /*
@@ -91,74 +97,74 @@ void UBlox::reset() {
 
 int UBlox::process(uint8_t c) {
     static uint8_t ck_a,ck_b;
-    if (state == 0 && c == 0xb5)
-        state = 1;
-    else if (state == 1) {
+    if (state_ == 0 && c == 0xb5)
+        state_ = 1;
+    else if (state_ == 1) {
         if (c == 0x62)
-            state = 2;
+            state_ = 2;
         else
-            state = 0;
+            state_ = 0;
     }
-    else if (state == 2) {
+    else if (state_ == 2) {
         ck_a = c; ck_b = c;
-        state = 3;
-        Id = (uint16_t) c << 8;
+        state_ = 3;
+        Id_ = (uint16_t) c << 8;
     }
-    else if (state == 3) {
+    else if (state_ == 3) {
         ck_a += c; ck_b += ck_a;
-        state = 4;
-        Id |= (uint16_t) c;
+        state_ = 4;
+        Id_ |= (uint16_t) c;
         // db_printf("Id=%4.4x\n",Id);
     }
-    else if (state == 4) {
+    else if (state_ == 4) {
         ck_a += c; ck_b += ck_a;
-        plLength = c;
-        state = 5;
+        plLength_ = c;
+        state_ = 5;
     }
-    else if (state == 5) {
+    else if (state_ == 5) {
         ck_a += c; ck_b += ck_a;
-        plLength |= (uint16_t) c << 8;
-        state = 6;
-        if (Id == 0x500 || Id == 0x501) // ACK/NAK buffer
-            p = (uint8_t *) &AckedId;
+        plLength_ |= (uint16_t) c << 8;
+        state_ = 6;
+        if (Id_ == 0x500 || Id_ == 0x501) // ACK/NAK buffer
+            p_ = (uint8_t *) &AckedId_;
         else {
-            payLoad.length = plLength;
-            p = payLoad.buffer;
+            payLoad_.length = plLength_;
+            p_ = payLoad_.buffer;
         }
     }
-    else if (state == 6) {
+    else if (state_ == 6) {
         ck_a += c; ck_b += ck_a;
-        *p++ = c;
-        if (--plLength == 0) {
-            state = 7;
+        *p_++ = c;
+        if (--plLength_ == 0) {
+            state_ = 7;
         }
     }
-    else if (state == 7) {
+    else if (state_ == 7) {
         if (c == ck_a)
-            state=8;
+            state_=8;
         else
-            state = 0;
+            state_ = 0;
     }
-    else if (state == 8) {
-        state = 0;
+    else if (state_ == 8) {
+        state_ = 0;
         if (ck_b == c) {
-            if (Id == 0x0501 || Id == 0x500) {
-                AckedId = (AckedId >> 8) | (AckedId << 8);  // Change Endianess
+            if (Id_ == 0x0501 || Id_ == 0x500) {
+                AckedId_ = (AckedId_ >> 8) | (AckedId_ << 8);  // Change Endianess
                 // db_printf("Id=%4.4x Ack=%4.4x\n",Id,AckedId);
             }
-            return Id;
+            return Id_;
         }
     }
-    return (0-state);
+    return (0-state_);
 }
 
 int UBlox::available() {
-    _Wire.beginTransmission(_address);
-    _Wire.write((uint8_t)0xfd);
-    _Wire.endTransmission(false);
-    _Wire.requestFrom(_address, 2);//
-    uint16_t bytes = (uint16_t) _Wire.read() << 8;
-    bytes |= _Wire.read();
+    Wire_.beginTransmission(address_);
+    Wire_.write((uint8_t)0xfd);
+    Wire_.endTransmission(false);
+    Wire_.requestFrom(address_, 2);//
+    uint16_t bytes = (uint16_t) Wire_.read() << 8;
+    bytes |= Wire_.read();
     return bytes;
 }
 
@@ -168,33 +174,37 @@ void UBlox::GetPeriodic() {
         return this->GetPeriodic(bytes);
 }
 
+void UBlox::dispatchMessage(int id) {
+	if (id > 0 && id != 0x0501 && id != 0x0500) { // Valid and not equal to ACK or NAK
+	// Process UBX packet
+		switch (id) {
+		case 0x0107:
+			if (funcNavPvt) {
+				if (payLoad_.length == sizeof(NavigationPositionVelocityTimeSolution))
+					this->funcNavPvt((NavigationPositionVelocityTimeSolution*) payLoad_.buffer);
+			}
+			break;
+		default:
+			//
+			break;
+		}
+	}
+}
+
 void UBlox::GetPeriodic (int bytes) {
     this->db_printf("%d bytes available\n",bytes);
     if (bytes) {
         do {
             uint8_t read;       // Holds actual read
             if (bytes >= 128)
-                read = _Wire.requestFrom(_address, 128);
+                read = Wire_.requestFrom(address_, 128);
             else
-                read = _Wire.requestFrom(_address, bytes);
+                read = Wire_.requestFrom(address_, bytes);
             bytes -= read;
-            while (_Wire.available()) {
+            while (Wire_.available()) {
                 uint8_t c = Wire.read();
                 int id = this->process(c);  // id < 0 state of state machine, id > 0 valid UBX packet found, id == 0 no match for UBX
-                if (id > 0 && id != 0x0501 && id != 0x0500) { // Valid and not equal to ACK or NAK
-                    // Process UBX packet
-                    switch (id) {
-                        case 0x0107:
-                            if (funcNavPvt) {
-                                if (payLoad.length == sizeof(NavigationPositionVelocityTimeSolution))
-                                    this->funcNavPvt((NavigationPositionVelocityTimeSolution*)payLoad.buffer);
-                            }
-                            break;
-                        default:
-                            //
-                            break;
-                    }
-                }
+                this->dispatchMessage(id);
             }
         } while (bytes);
     }
@@ -209,13 +219,13 @@ int UBlox::send(uint8_t *buffer,int n) {
         ck_b += ck_a;
     }
     //
-    _Wire.beginTransmission(_address);
-    _Wire.write(0xb5);
-    _Wire.write(0x62);
-    _Wire.write(buffer, n);
-    _Wire.write(ck_a);
-    _Wire.write(ck_b);
-    return _Wire.endTransmission();
+    Wire_.beginTransmission(address_);
+    Wire_.write(0xb5);
+    Wire_.write(0x62);
+    Wire_.write(buffer, n);
+    Wire_.write(ck_a);
+    Wire_.write(ck_b);
+    return Wire_.endTransmission();
 }
 
 void UBlox::CfgMsg(uint16_t Msg,uint8_t rate) {
@@ -229,19 +239,19 @@ void UBlox::CfgMsg(uint16_t Msg,uint8_t rate) {
     buffer[5] = Msg & 0xff;
     buffer[6] = rate;
     // Push message on Wire
-    int i = this->send(buffer,7);
+    (void) this->send(buffer,7);
     this->wait();
 }
 
 int UBlox::setTimePulseParameters (TimePulseParameters *Tpp) {
     // Warning this overwrites the receive buffer !!!
-    payLoad.buffer[0] = 0x06;
-    payLoad.buffer[1] = 0x31;
-    payLoad.buffer[2] = 32;
-    payLoad.buffer[3] = 0;
-    memcpy(&payLoad.buffer[4],(uint8_t*)Tpp,32);
+    payLoad_.buffer[0] = 0x06;
+    payLoad_.buffer[1] = 0x31;
+    payLoad_.buffer[2] = 32;
+    payLoad_.buffer[3] = 0;
+    memcpy(&payLoad_.buffer[4],(uint8_t*)Tpp,32);
     // Push message on Wire
-    int i = this->send(payLoad.buffer,36);
+    (void) this->send(payLoad_.buffer,36);
     return this->wait();
 }
 
@@ -254,20 +264,20 @@ bool UBlox::getTimePulseParameters(uint8_t tpIdx,TimePulseParameters* tpp) {
     buffer[3] = 0;
     buffer[4] = tpIdx;
     // Push message on Wire
-    int i = this->send(buffer,5);
+    (void) this->send(buffer,5);
     // wait for response
     return this->wait(0x0631,sizeof(TimePulseParameters),tpp);
 }
 
 int UBlox::setPortConfigurationDDC (PortConfigurationDDC *pcd) {
     // Warning this overwrites the receive buffer !!!
-    payLoad.buffer[0] = 0x06;
-    payLoad.buffer[1] = 0x00;
-    payLoad.buffer[2] = 20;
-    payLoad.buffer[3] = 0;
-    memcpy(&payLoad.buffer[4],(uint8_t*)pcd,20);
+    payLoad_.buffer[0] = 0x06;
+    payLoad_.buffer[1] = 0x00;
+    payLoad_.buffer[2] = 20;
+    payLoad_.buffer[3] = 0;
+    memcpy(&payLoad_.buffer[4],(uint8_t*)pcd,20);
     // Push message on Wire
-    int i = this->send(payLoad.buffer,24);
+    (void) this->send(payLoad_.buffer,24);
     return this->wait();
 }
 
@@ -279,7 +289,7 @@ bool UBlox::getPortConfigurationDDC(PortConfigurationDDC* pcd) {
     buffer[2] = 0;
     buffer[3] = 0;
     // Push message on Wire
-    int i = this->send(buffer,4);
+    (void) this->send(buffer,4);
     // wait for response
     return this->wait(0x0600,sizeof(PortConfigurationDDC),pcd);
 }
@@ -294,11 +304,11 @@ int UBlox::wait() {
         do {
             uint8_t read;                    // Holds actual read
             if (bytes >= 128)
-                read = _Wire.requestFrom(_address, 128);
+                read = Wire_.requestFrom(address_, 128);
             else
-                read = _Wire.requestFrom(_address, bytes);
+                read = Wire_.requestFrom(address_, bytes);
             bytes -= read;
-            while (_Wire.available()) {
+            while (Wire_.available()) {
                 uint8_t c = Wire.read();
                 id = this->process(c);  
             }
@@ -317,22 +327,21 @@ bool UBlox::wait(uint16_t rid,int reqLength,void *d) {
         do {
             uint8_t read;                    // Holds actual read
             if (bytes >= 128)
-                read = _Wire.requestFrom(_address, 128);
+                read = Wire_.requestFrom(address_, 128);
             else
-                read = _Wire.requestFrom(_address, bytes);
+                read = Wire_.requestFrom(address_, bytes);
             bytes -= read;
-            while (_Wire.available()) {
+            while (Wire_.available()) {
                 uint8_t c = Wire.read();
                 int pid = this->process(c);  // id < 0 state of state machine, id > 0 valid UBX packet found, id == 0 no match for UBX
                 if (pid == rid) {            // procesed id == requested id
-                    if (payLoad.length == reqLength) {
-                        memcpy(d,payLoad.buffer,reqLength);
+                    if (payLoad_.length == reqLength) {
+                        memcpy(d,payLoad_.buffer,reqLength);
                         found = true;
                     }
                 }
                 else if (pid > 0)
-                    this->db_printf("Ignoring id=%4.4x\n",pid);
-
+                	this->dispatchMessage(pid);
             }
         } while (bytes);
         //

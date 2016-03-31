@@ -89,7 +89,7 @@ typedef struct __attribute__((packed,aligned(1))) TimePulseTimedata {
     uint8_t     reserved1;
 } TimePulseTimedata;
 
-enum NMEA {
+enum Messages {
     UBX_NAV_PVT = 0x0107,
     UBX_TIM_TP  = 0x0d01,
     NMEA_CGA    = 0xf000,
@@ -113,8 +113,8 @@ enum NMEA {
 class UBlox {
 
 public:
-    NavigationPositionVelocityTimeSolution *NavPvt;
-    TimePulseParameters *CfgTp;
+    // NavigationPositionVelocityTimeSolution *NavPvt;
+    // TimePulseParameters *CfgTp;
     //
     UBlox   ();
     UBlox   (TwoWire& Wire,uint8_t address);
@@ -145,19 +145,20 @@ private:
     int     send(uint8_t *buffer,int n);
     int     wait();
     bool    wait(uint16_t rid,int reqLength,void *d);
+    void 	dispatchMessage(int id);
     //
-    TwoWire&    _Wire;
-    uint8_t     _address;
-    uint8_t     *p;
-    int         state = 0;
-    uint16_t    AckedId;
-    uint16_t    plLength;
-    uint16_t    Id;
+    TwoWire&    Wire_;
+    uint8_t     address_;
+    uint8_t     *p_;
+    int         state_ = 0;
+    uint16_t    AckedId_;
+    uint16_t    plLength_;
+    uint16_t    Id_;
 
-    struct {
+    struct payload{
         uint16_t length;
         uint8_t buffer[256];
-    } payLoad;
+    } payLoad_;
     
     
 };
