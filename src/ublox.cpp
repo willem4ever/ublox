@@ -175,20 +175,22 @@ void UBlox::GetPeriodic() {
 }
 
 void UBlox::dispatchMessage(int id) {
-	if (id > 0 && id != 0x0501 && id != 0x0500) { // Valid and not equal to ACK or NAK
-	// Process UBX packet
-		switch (id) {
-		case 0x0107:
-			if (funcNavPvt) {
-				if (payLoad_.length == sizeof(NavigationPositionVelocityTimeSolution))
-					this->funcNavPvt((NavigationPositionVelocityTimeSolution*) payLoad_.buffer);
-			}
-			break;
-		default:
-			//
-			break;
-		}
-	}
+    if (id > 0 && id != 0x0501 && id != 0x0500) { // Valid and not equal to ACK or NAK
+    // Process UBX packet
+        switch (id) {
+        case 0x0107:
+            if (funcNavPvt) {
+                if (payLoad_.length
+                        == sizeof(NavigationPositionVelocityTimeSolution))
+                    this->funcNavPvt(
+                            (NavigationPositionVelocityTimeSolution*) payLoad_.buffer);
+            }
+            break;
+        default:
+            //
+            break;
+        }
+    }
 }
 
 void UBlox::GetPeriodic (int bytes) {
