@@ -10,7 +10,6 @@
 #define WETIME_H_
 
 #include <stdint.h>
-#include <time.h>
 
 #define SECSPERMIN  60L
 #define MINSPERHOUR 60L
@@ -26,8 +25,6 @@
 #define EPOCH_YEARS_SINCE_LEAP 2
 #define EPOCH_YEARS_SINCE_CENTURY 70
 #define EPOCH_YEARS_SINCE_LEAP_CENTURY 370
-
-#define isleap(y) ((((y) % 4) == 0 && ((y) % 100) != 0) || ((y) % 400) == 0)
 
 #define EPOCH_ADJUSTMENT_DAYS   719468L
 /* year to which the adjustment was made */
@@ -49,15 +46,59 @@
 /* number of years per era */
 #define YEARS_PER_ERA       400
 
+enum WeekDays {Sun,Mon,Tue,Wed,Thu,Fri,Sat};
+enum Months   {Jan = 1, Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec};
+enum WeekOfMonth {First = 1, Second, Third, Fourth, Last = 5};
+
+struct tmx
+{
+  int   tm_sec;
+  int   tm_min;
+  int   tm_hour;
+  int   tm_mday;
+  int   tm_mon;
+  int   tm_year;
+  int   tm_wday;
+  int   tm_yday;
+  int   tm_isdst;
+};
+
+struct rule {
+    const char *name;
+    uint8_t  week;
+    uint8_t  weekday;
+    uint8_t  month;
+    uint8_t  hour;
+    uint8_t  minute;
+};
+
 class Time {
+
 public:
     Time();
-    static bool dst(uint32_t lcltime) ;
-    static void localtime (const uint32_t utctime,struct tm *t) ;
-
+    Time(int16_t utcoffset,const char *zone,uint8_t bhour,uint8_t bminute,uint8_t bmonth,uint8_t bweek, uint8_t bweekday,const char *dstzone,uint8_t ehour,uint8_t eminute,uint8_t emonth,uint8_t eweek, uint8_t eweekday);
+    //
+    void localtime (const uint32_t utctime,struct tmx *t) ;
+    uint32_t mktime(int32_t y, uint32_t m, uint32_t d, uint8_t hour, uint8_t minute,uint8_t seconds);
+    void dstwindow(int year);
+    uint32_t dstfirst ();
+    uint32_t dstlast ();
+    //
 private:
-    static inline int LastSunday(int dow,int dom,int max);
-    static bool daylightsavings(int hour,int day, int month, int dow);
+    uint32_t get_dst_time(uint8_t dst,uint8_t rweek, uint8_t rweekday,uint8_t rmonth, uint8_t rhour, uint16_t year );
+    uint8_t  get_nth_dow_month_year(unsigned n, unsigned wd, unsigned month, int year);
+    uint8_t  lastdayofmonth(int32_t y, unsigned m);
+    uint8_t  last_day_of_month_common_year(unsigned m);
+    bool is_leap(int32_t y);
+    uint8_t  weekdaydifference(unsigned x, unsigned y);
+    uint8_t  weekday_from_days(int32_t z);
+    uint32_t days_from_civil(int32_t y, uint32_t m, uint32_t d);
+
+    bool dst_;              // dst enabled
+    uint32_t xdst[2];       // Holds begin and end of DST in UTC epoch
+    int16_t  offset;        // UTC Offset in minutes
+    int16_t  year;          // Year of current dst_ compute
+    struct  rule rules[2];  // Rules for DST
 
 };
 

@@ -35,9 +35,10 @@ UBlox::UBlox ():
     //
     Id_ = AckedId_ = plLength_ = 0;
      p_ = NULL;
-    //
+#ifdef ARDUINO_SODAQ_LORAONE
     pinMode(GPS_ENABLE, OUTPUT);
     pinMode(GPS_TIMEPULSE, INPUT);
+#endif
 }
 
 UBlox::UBlox (TwoWire& aWire,uint8_t address):
@@ -47,20 +48,26 @@ UBlox::UBlox (TwoWire& aWire,uint8_t address):
     Id_ = AckedId_ = plLength_ = 0;
     p_ = NULL;
     //
+#ifdef ARDUINO_SODAQ_LORAONE
     pinMode(GPS_ENABLE, OUTPUT);
     pinMode(GPS_TIMEPULSE, INPUT);
+#endif
 }
 
 void UBlox::enable () {
     this->reset();
+#ifdef ARDUINO_SODAQ_LORAONE
     digitalWrite(GPS_ENABLE, 1);
     db_printf("uBlox enabled\n");
+#endif
 }
 
 void UBlox::disable () {
     this->reset();
+#ifdef ARDUINO_SODAQ_LORAONE
     digitalWrite(GPS_ENABLE, 0);
     db_printf("uBlox disabled\n");
+#endif
 }
 
 void UBlox::flush() {
@@ -180,10 +187,11 @@ void UBlox::dispatchMessage(int id) {
         switch (id) {
         case 0x0107:
             if (funcNavPvt) {
-                if (payLoad_.length
-                        == sizeof(NavigationPositionVelocityTimeSolution))
+                if (payLoad_.length == 84 || payLoad_.length == 92) // ublox-7 == 84 ublox-8 == 92
                     this->funcNavPvt(
                             (NavigationPositionVelocityTimeSolution*) payLoad_.buffer);
+                else
+                    db_printf("Oops %d %d\n",payLoad_.length,sizeof(NavigationPositionVelocityTimeSolution));
             }
             break;
         default:
@@ -228,6 +236,12 @@ int UBlox::send(uint8_t *buffer,int n) {
     Wire_.write(ck_a);
     Wire_.write(ck_b);
     return Wire_.endTransmission();
+}
+
+void UBlox::sendraw() {
+    (void) this->send(payLoad_.buffer,payLoad_.length);
+    int id = this->wait();
+    this->db_printf("UBlox::sendraw() == %4.4x\n",id);
 }
 
 void UBlox::CfgMsg(uint16_t Msg,uint8_t rate) {
@@ -341,6 +355,8 @@ bool UBlox::wait(uint16_t rid,int reqLength,void *d) {
                         memcpy(d,payLoad_.buffer,reqLength);
                         found = true;
                     }
+                    else
+                        db_printf("Oops %d %d\n",payLoad_.length,reqLength);
                 }
                 else if (pid > 0)
                 	this->dispatchMessage(pid);

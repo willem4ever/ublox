@@ -32,7 +32,7 @@ typedef struct __attribute__((packed,aligned(1))) NavigationPositionVelocityTime
     int32_t     nano;       // 16 Fraction of second, range -1e9 .. 1e9 (UTC)
     uint8_t     fixType;    // 20 GNSSfix Type, range 0..5
     uint8_t     flags;      // 21 Fix Status Flags
-    uint8_t     reserved1;  // 22 Reserved
+    uint8_t     flags2;     // 22 Reserved
     uint8_t     numSV;      // 23 Number of satellites used in Nav Solution
     int32_t     lon;        // 24 Longitude
     int32_t     lat;        // 28 Latitude
@@ -48,8 +48,9 @@ typedef struct __attribute__((packed,aligned(1))) NavigationPositionVelocityTime
     uint32_t    sAcc;       // 68 Speed Accuracy Estimate
     uint32_t    headingAcc; // 72 Heading Accuracy Estimate
     uint16_t    pDOP;       // 76 Position DOP
-    uint16_t    reserved2;  // 78 Reserved
-    uint32_t    reserved3;  // 80 Reserved
+    uint8_t   reserved1[6]; // 78 Reserved
+    int32_t     headVeh;    // 84 Heading of vehicle (2-D)
+    uint8_t   reserved2[4]; // 88 Reserved
 } NavigationPositionVelocityTimeSolution;
 
 
@@ -140,8 +141,10 @@ public:
     // Debug helper
     void    db_printf(const char *message,...);
 
-private:
+    //
     int     process(uint8_t);
+    void    sendraw();
+private:
     int     send(uint8_t *buffer,int n);
     int     wait();
     bool    wait(uint16_t rid,int reqLength,void *d);

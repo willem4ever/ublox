@@ -4,7 +4,6 @@
 #include <ublox.h>
 #include <stdio.h>
 #include <stdarg.h>
-#include <time.h>
 #include "MyTime.h"
 
 #define loraSerial Serial1
@@ -16,12 +15,14 @@ enum LedColor {
   BLUE
 };
 
+
 uint8_t buffer[128];
-uint32_t epoch  = 0;
-uint32_t uptime = 0;
+uint32_t epoch   = 0;
+uint32_t uptime  = 0;
 uint32_t pulseat = 0;
 
 UBlox uBlox;
+Time myTime(60,"CET",2,0,Mar,Last,Sun,"CEST",3,0,Oct,Last,Sun);
 
 void delegateNavPvt(NavigationPositionVelocityTimeSolution* NavPvt) {
 
@@ -30,19 +31,10 @@ void delegateNavPvt(NavigationPositionVelocityTimeSolution* NavPvt) {
                   NavPvt->hour, NavPvt->minute, NavPvt->seconds, NavPvt->nano, NavPvt->valid,
                   NavPvt->lat, NavPvt->lon, NavPvt->numSV, NavPvt->fixType);
 
-  if ((NavPvt->valid & 3) == 3 && epoch == uptime) {     // Valid date & time
-    struct tm tm;
-    // Calculate epoch from UTC time ...
-    tm.tm_isdst = -1;
-    tm.tm_year  = NavPvt->year - 1900;
-    tm.tm_mon   = NavPvt->month - 1;
-    tm.tm_mday  = NavPvt->day;
-    tm.tm_hour  = NavPvt->hour;
-    tm.tm_min   = NavPvt->minute;
-    tm.tm_sec   = NavPvt->seconds;
-    //
-    epoch = mktime(&tm);
-    uBlox.db_printf("set epoch=%d\n", epoch);
+  if ((NavPvt->valid & 3) == 3 && (epoch == uptime || (NavPvt->minute == 0 && NavPvt->seconds == 0)) ) {     // Valid date & time
+      epoch = myTime.mktime(NavPvt->year,NavPvt->month,NavPvt->day,NavPvt->hour,NavPvt->minute,NavPvt->seconds);
+      uBlox.db_printf("set epoch=%d\n", epoch);
+      myTime.dstwindow(NavPvt->year);
   }
 }
 
@@ -73,29 +65,6 @@ void scani2c() {
 		SerialUSB.println("done\n");
 
 }
-
-static inline int LastSunday(int dow,int dom,int max) {
-    if (dow >  0 && (dom-dow) >= max-6) return 1;	// After last Sunday
-    if (dow == 0 && (dom-dow) >= max-6) return 0;	// last Sunday
-    return -1;										// Before last Sunday
-}
-
-bool daylightsavings(int hour,int day, int month, int dow) {
-    if (month < 3 || month > 10) return false;
-    if (month > 3 && month < 10) return true;
-    //
-    if (month == 3) {
-        int i = LastSunday(dow,day,31);
-        if (i > 0 || (i == 0 && hour >= 2)) return true;
-    }
-    //
-    if (month == 10) {
-        int i = LastSunday(dow,day,31);
-        if (i < 0 || (i == 0 && hour < 2)) return true;
-    }
-    return false;
-}
-
 
 // Fast way to manipulate RGB leds
 void Led(uint8_t color) {
@@ -171,9 +140,43 @@ void setup() {
 	uBlox.CfgMsg(UBX_NAV_PVT, 1);   						// Navigation Position Velocity TimeSolution
 	uBlox.funcNavPvt = delegateNavPvt;
 	//
-	SerialUSB.println("Hit any key to enter loop or wait 5000 ms");
-	uint32_t s = millis();
+	//
+	struct tmx tm1,tm2;
+
+	myTime.dstwindow(2016);                                  // Set Initial year
+	myTime.localtime (myTime.dstfirst(),&tm1);
+	myTime.localtime (myTime.dstlast(),&tm2);
+
+	uBlox.db_printf("%4.4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d - %4.4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d (%d %d)\n",
+	        tm1.tm_year+1900,tm1.tm_mon+1,tm1.tm_mday,tm1.tm_hour,tm1.tm_min,tm1.tm_sec,
+	        tm2.tm_year+1900,tm2.tm_mon+1,tm2.tm_mday,tm2.tm_hour,tm2.tm_min,tm2.tm_sec,
+	        myTime.dstfirst(),myTime.dstlast());
+	//
+	//
+    SerialUSB.println("Hit any key to enter loop or wait 5000 ms");
+    uint32_t s = millis();
 	while (SerialUSB.read() == -1 && millis() - s < 5000);
+	// Waiting for assist data
+	char c = SerialUSB.read();
+	if (c == 0xaa) {
+	    while (SerialUSB.read() == -1 && millis() - s < 100);   // Wait 100 ms
+	    c = SerialUSB.read();
+	    if (c == 0x55) {
+	        SerialUSB.println("ready ...");
+	        uint32_t s = millis();
+	        while (millis() - s < 1000) {
+	            if (SerialUSB.available()) {
+	                char c = SerialUSB.read();
+	                int id = uBlox.process(c);
+	                if (id == 0xaa55) {
+	                    // send packet to ublox ....
+	                    uBlox.sendraw();
+	                    s = millis();
+	                }
+	            }
+	        }
+	    }
+	}
 	//
 	SerialUSB.println("Entering loop() now");
 }
@@ -203,9 +206,9 @@ void loop() {
   }
   //
   if (uptime != _uptime) {
-	struct tm t;
+	struct tmx t;
 	uint32_t now = millis();
-	Time::localtime(epoch,&t);
+	myTime.localtime(epoch,&t);
     uBlox.db_printf("%4.4d-%2.2d-%2.2d %2.2d:%2.2d:%2.2d - Up since %d for %d seconds (%d)\n",t.tm_year+1900,t.tm_mon+1,t.tm_mday,t.tm_hour,t.tm_min,t.tm_sec,epoch - uptime, uptime,millis()-now);
     _uptime = uptime;
   }
